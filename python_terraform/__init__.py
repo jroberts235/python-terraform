@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-# above is for compatibility of python2.7.11
-
 import subprocess
 import os
 import sys
@@ -49,8 +46,7 @@ class Terraform(object):
                  parallelism=None,
                  var_file=None,
                  terraform_bin_path=None,
-                 is_env_vars_included=True, 
-                 ):
+                 is_env_vars_included=True):
         """
         :param working_dir: the folder of the working folder, if not given,
                             will be current working folder
@@ -272,7 +268,7 @@ class Terraform(object):
         :return: ret_code, out, err
         """
         capture_output = kwargs.pop('capture_output', True)
-        raise_on_error = kwargs.pop('raise_on_error', False)
+        raise_on_error = kwargs.pop('raise_on_error', True)
         if capture_output is True:
             stderr = subprocess.PIPE
             stdout = subprocess.PIPE
@@ -282,6 +278,7 @@ class Terraform(object):
 
         cmds = self.generate_cmd_string(cmd, *args, **kwargs)
         log.debug('command: {c}'.format(c=' '.join(cmds)))
+        #log.debug('command TYPE: {c}'.format(c=type(' '.join(cmds))))
 
         working_folder = self.working_dir if self.working_dir else None
 
@@ -298,12 +295,12 @@ class Terraform(object):
 
         out, err = p.communicate()
         ret_code = p.returncode
-        log.debug('output: {o}'.format(o=out))
+        log.debug('output: {o}'.format(o=out.decode('utf-8')))
 
         if ret_code == 0:
             self.read_state_file()
         else:
-            log.warn('error: {e}'.format(e=err))
+            log.warn('error: {e}'.format(e=err.decode('utf-8')))
 
         self.temp_var_files.clean_up()
         if capture_output is True:
@@ -388,41 +385,6 @@ class Terraform(object):
 
         self.tfstate = Tfstate.load_file(file_path)
 
-    def set_workspace(self, workspace):
-        """
-        set workspace
-        :param workspace: the desired workspace.
-        :return: status
-        """
-
-        return self.cmd('workspace' ,'select', workspace)  
-
-    def create_workspace(self, workspace):
-        """
-        create workspace
-        :param workspace: the desired workspace.
-        :return: status
-        """
-
-        return self.cmd('workspace', 'new', workspace)     
-
-    def delete_workspace(self, workspace):
-        """
-        delete workspace
-        :param workspace: the desired workspace.
-        :return: status
-        """
-
-        return self.cmd('workspace', 'delete', workspace)    
-
-    def show_workspace(self):
-        """
-        show workspace
-        :return: workspace
-        """
-
-        return self.cmd('workspace', 'show')  
-
     def __exit__(self, exc_type, exc_value, traceback):
         self.temp_var_files.clean_up()
 
@@ -432,12 +394,16 @@ class VariableFiles(object):
         self.files = []
 
     def create(self, variables):
-        with tempfile.NamedTemporaryFile('w+t', suffix='.tfvars.json', delete=False) as temp:
+        with tempfile.NamedTemporaryFile('w+t', delete=False) as temp:
             log.debug('{0} is created'.format(temp.name))
             self.files.append(temp)
             log.debug(
-                'variables wrote to tempfile: {0}'.format(str(variables)))
-            temp.write(json.dumps(variables))
+                'variables written to tempfile: {0}'.format(str(variables)))
+            for k, v in variables.items():
+                if type(v) == 'int':
+                    temp.write(f'{k} = {v}\n')
+                else:
+                    temp.write(f'{k} = "{v}"\n')
             file_name = temp.name
 
         return file_name
